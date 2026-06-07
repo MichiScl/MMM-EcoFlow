@@ -1,0 +1,14 @@
+.ecoflow-wrapper {
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 5px;
+    text-align: left;
+    min-width: 180px;
+}
+
+.ecoflow-title {
+    margin-bottom: 5px;
+    color: #fff;
+    border-bottom: 1px solid #444;
+    padding-bottom: 3px;
+}
