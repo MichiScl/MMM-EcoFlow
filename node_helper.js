@@ -285,7 +285,11 @@ module.exports = NodeHelper.create({
             console.log("MMM-EcoFlow: JSON file successfully written", targetPath);
 
             // Erfolg zurück an das Frontend senden
-            this.sendSocketNotification("DATA_WRITTEN", { timestamp: data.timestamp });
+            this.sendSocketNotification("DATA_WRITTEN", {
+                timestamp: data.timestamp,
+                receivedAt: Date.now(),
+                entryCount: Object.keys(data.data || {}).length
+            });
         } catch (err) {
             console.error("MMM-EcoFlow: Atomic write failed", {
                 targetPath: targetPath,
