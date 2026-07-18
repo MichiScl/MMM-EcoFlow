@@ -5,13 +5,15 @@ Module.register("MMM-EcoFlow", {
         topics: [], // Array von Topics, z.B. ["/open/api/device/quota/v1/DEINE_SERIENNUMMER"]
         dataFilter: [], // Array von Keys, die behalten werden sollen (z.B. ["soc", "wIn", "wOut"])
         outputFile: "modules/MMM-EcoFlow/output.json",
-        apiUrl: "https://api-eu.ecoflow.com" // Standard EU Endpoint
+        apiUrl: "https://api-eu.ecoflow.com", // Standard EU Endpoint
+        showModule: true
     },
 
     start: function() {
         Log.info("Starting module: " + this.name);
         this.status = "Initializing...";
         this.lastUpdate = "Never";
+        this.hidden = !this.config.showModule;
         
         // Konfiguration an den Node-Helper senden
         this.sendSocketNotification("CONFIG", this.config);
@@ -33,6 +35,10 @@ Module.register("MMM-EcoFlow", {
     },
 
     getDom: function() {
+        if (this.hidden) {
+            return document.createElement("div");
+        }
+
         const wrapper = document.createElement("div");
         wrapper.className = "ecoflow-wrapper small";
 

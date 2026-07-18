@@ -15,6 +15,14 @@ module.exports = NodeHelper.create({
     socketNotificationReceived: function(notification, payload) {
         if (notification === "CONFIG") {
             this.config = payload;
+            console.log("MMM-EcoFlow: CONFIG received", {
+                accessKey: payload.accessKey ? "present" : "missing",
+                secretKey: payload.secretKey ? "present" : "missing",
+                topics: Array.isArray(payload.topics) ? payload.topics : [],
+                dataFilter: Array.isArray(payload.dataFilter) ? payload.dataFilter : [],
+                outputFile: payload.outputFile,
+                apiUrl: payload.apiUrl
+            });
             this.initEcoFlowConnection();
         }
     },
@@ -50,6 +58,7 @@ module.exports = NodeHelper.create({
         const certUrl = `${this.config.apiUrl}/iot-open/sign/certification`;
 
         try {
+            console.log("MMM-EcoFlow: Requesting certification from", certUrl);
             this.sendSocketNotification("STATUS_UPDATE", { status: "Authenticating..." });
             
             const response = await axios.get(certUrl, {
@@ -61,14 +70,24 @@ module.exports = NodeHelper.create({
                 }
             });
 
+            console.log("MMM-EcoFlow: certification response", {
+                status: response.status,
+                data: response.data
+            });
+
             if (response.data && response.data.code === "0" && response.data.data) {
                 this.connectMQTT(response.data.data);
             } else {
                 let msg = response.data ? response.data.message : "Unknown Error";
+                console.error("MMM-EcoFlow: API returned non-zero code", response.data);
                 this.sendSocketNotification("STATUS_UPDATE", { status: `API Error: ${msg}` });
             }
         } catch (error) {
-            console.error("MMM-EcoFlow: Error fetching certification", error);
+            console.error("MMM-EcoFlow: Error fetching certification", {
+                message: error.message,
+                responseStatus: error.response && error.response.status,
+                responseData: error.response && error.response.data
+            });
             this.sendSocketNotification("STATUS_UPDATE", { status: "Connection Failed" });
         }
     },
@@ -87,23 +106,37 @@ module.exports = NodeHelper.create({
             rejectUnauthorized: true
         };
 
+        console.log("MMM-EcoFlow: Connecting MQTT broker", {
+            brokerUrl: brokerUrl,
+            clientId: authData.clientId,
+            username: authData.username
+        });
+
         this.mqttClient = mqtt.connect(brokerUrl, options);
 
         this.mqttClient.on("connect", () => {
+            console.log("MMM-EcoFlow: MQTT connection established");
             self.sendSocketNotification("STATUS_UPDATE", { status: "Connected to MQTT" });
             
             // Abonnieren der konfigurierten Topics
             if (Array.isArray(self.config.topics)) {
                 self.config.topics.forEach(topic => {
                     self.mqttClient.subscribe(topic, (err) => {
-                        if (!err) console.log(`MMM-EcoFlow: Subscribed to ${topic}`);
+                        if (err) {
+                            console.error("MMM-EcoFlow: MQTT subscribe failed for", topic, err);
+                        } else {
+                            console.log(`MMM-EcoFlow: Subscribed to ${topic}`);
+                        }
                     });
                 });
+            } else {
+                console.error("MMM-EcoFlow: No topics configured for MQTT subscription");
             }
         });
 
         this.mqttClient.on("message", (topic, message) => {
-            self.processMessage(message.toString());
+            console.log("MMM-EcoFlow: MQTT message received on", topic);
+            self.processMessage(topic, message.toString());
         });
 
         this.mqttClient.on("error", (err) => {
@@ -150,8 +183,9 @@ module.exports = NodeHelper.create({
     },
 
     // Verarbeitet die eingehenden MQTT-Pakete, filtert und schreibt sie atomar
-    processMessage: function(rawMessage) {
+    processMessage: function(topic, rawMessage) {
         try {
+            console.log("MMM-EcoFlow: Parsing MQTT payload for", topic);
             const parsed = JSON.parse(rawMessage);
             
             // Filter anwenden
@@ -162,6 +196,8 @@ module.exports = NodeHelper.create({
             let rawTime = parsed.timestamp || (parsed.data && parsed.data.timestamp) || null;
             const formattedTime = this.formatTimestamp(rawTime);
             
+            console.log("MMM-EcoFlow: Filtered payload keys", Object.keys(extractedData));
+            
             // Output-Objekt strukturieren
             const outputPayload = {
                 timestamp: formattedTime,
@@ -170,7 +206,11 @@ module.exports = NodeHelper.create({
 
             this.writeAtomicJSON(outputPayload);
         } catch (e) {
-            console.error("MMM-EcoFlow: Error processing MQTT payload", e);
+            console.error("MMM-EcoFlow: Error processing MQTT payload", {
+                topic: topic,
+                rawMessage: rawMessage,
+                error: e
+            });
         }
     },
 
@@ -180,9 +220,12 @@ module.exports = NodeHelper.create({
         const tmpPath = targetPath + ".tmp";
 
         try {
+            console.log("MMM-EcoFlow: Writing output to", targetPath);
+            
             // Ordnerstruktur erstellen, falls sie nicht existiert
             const dir = path.dirname(targetPath);
             if (!fs.existsSync(dir)){
+                console.log("MMM-EcoFlow: Creating output directory", dir);
                 fs.mkdirSync(dir, { recursive: true });
             }
 
@@ -192,10 +235,16 @@ module.exports = NodeHelper.create({
             // 2. Atomares Ersetzen im OS-Dateisystem (Linux rename)
             fs.renameSync(tmpPath, targetPath);
 
+            console.log("MMM-EcoFlow: JSON file successfully written", targetPath);
+
             // Erfolg zurück an das Frontend senden
             this.sendSocketNotification("DATA_WRITTEN", { timestamp: data.timestamp });
         } catch (err) {
-            console.error("MMM-EcoFlow: Atomic write failed", err);
+            console.error("MMM-EcoFlow: Atomic write failed", {
+                targetPath: targetPath,
+                tmpPath: tmpPath,
+                error: err
+            });
             // Aufräumen falls tmp verwaist ist
             if (fs.existsSync(tmpPath)) {
                 try { fs.unlinkSync(tmpPath); } catch (_) {}
