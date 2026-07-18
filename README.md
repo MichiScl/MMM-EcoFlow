@@ -42,7 +42,7 @@ Example configuration
     ],
     dataFilter: ["soc", "wIn", "wOut"],
     outputFile: "modules/MMM-EcoFlow/output.json",
-    apiUrl: "https://api-eu.ecoflow.com",
+    apiUrl: "https://api.ecoflow.com",
     showModule: true
   }
 }
@@ -54,7 +54,7 @@ Configuration parameters
 - `topics`: list of MQTT topics to subscribe to. Required.
 - `dataFilter`: list of keys to retain. If empty, the full payload is kept. The filter is recursive.
 - `outputFile`: output JSON path. The path is resolved by the helper and folders are created automatically if needed.
-- `apiUrl`: EcoFlow API base endpoint. Default: `https://api-eu.ecoflow.com`
+- `apiUrl`: EcoFlow API base endpoint. Default: `https://api.ecoflow.com`
 - `showModule`: controls whether the module is rendered on the mirror. Default: `true`. Set to `false` to hide the module completely.
 
 How the data flow works

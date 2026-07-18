@@ -44,10 +44,12 @@ module.exports = NodeHelper.create({
 
     normalizeApiUrl: function(apiUrl) {
         if (!apiUrl) {
-            return "https://api-eu.ecoflow.com";
+            return "https://api.ecoflow.com";
         }
 
-        return apiUrl.replace(/^https?:\/\/developer-eu\.ecoflow\.com/i, "https://api-eu.ecoflow.com");
+        return apiUrl
+            .replace(/^https?:\/\/developer-eu\.ecoflow\.com/i, "https://api.ecoflow.com")
+            .replace(/^https?:\/\/api-eu\.ecoflow\.com/i, "https://api.ecoflow.com");
     },
 
     // Holt die Broker-Verbindungsdaten von der EcoFlow API
