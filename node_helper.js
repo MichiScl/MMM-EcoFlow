@@ -121,11 +121,14 @@ module.exports = NodeHelper.create({
     connectMQTT: function(authData) {
         const self = this;
         const brokerUrl = `mqtts://${authData.url}:${authData.port}`;
+        const username = authData.certificateAccount || authData.username;
+        const password = authData.certificatePassword || authData.password;
+        const clientId = authData.certificateAccount || authData.clientId || `ecoflow-${Date.now()}`;
         
         const options = {
-            clientId: authData.clientId,
-            username: authData.username,
-            password: authData.password,
+            clientId: clientId,
+            username: username,
+            password: password,
             keepalive: 60,
             reconnectPeriod: 10000,
             rejectUnauthorized: true
@@ -133,8 +136,9 @@ module.exports = NodeHelper.create({
 
         console.log("MMM-EcoFlow: Connecting MQTT broker", {
             brokerUrl: brokerUrl,
-            clientId: authData.clientId,
-            username: authData.username
+            clientId: clientId,
+            username: username,
+            password: password ? "present" : "missing"
         });
 
         this.mqttClient = mqtt.connect(brokerUrl, options);
