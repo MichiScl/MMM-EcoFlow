@@ -42,6 +42,14 @@ module.exports = NodeHelper.create({
             .digest("hex");
     },
 
+    normalizeApiUrl: function(apiUrl) {
+        if (!apiUrl) {
+            return "https://api-eu.ecoflow.com";
+        }
+
+        return apiUrl.replace(/^https?:\/\/developer-eu\.ecoflow\.com/i, "https://api-eu.ecoflow.com");
+    },
+
     // Holt die Broker-Verbindungsdaten von der EcoFlow API
     initEcoFlowConnection: async function() {
         const self = this;
@@ -54,6 +62,7 @@ module.exports = NodeHelper.create({
             timestamp: timestamp
         };
 
+        this.config.apiUrl = this.normalizeApiUrl(this.config.apiUrl);
         const signature = this.generateSignature(params, this.config.secretKey);
         const certUrl = `${this.config.apiUrl}/iot-open/sign/certification`;
 
@@ -70,16 +79,30 @@ module.exports = NodeHelper.create({
                 }
             });
 
+            const responseData = response.data;
+            const responseIsHtml = typeof responseData === "string" && responseData.trim().startsWith("<!doctype html");
+
             console.log("MMM-EcoFlow: certification response", {
                 status: response.status,
-                data: response.data
+                contentType: response.headers && response.headers["content-type"],
+                responseIsHtml: responseIsHtml,
+                data: responseData
             });
 
-            if (response.data && response.data.code === "0" && response.data.data) {
-                this.connectMQTT(response.data.data);
+            if (responseIsHtml) {
+                console.error("MMM-EcoFlow: API endpoint returned HTML instead of JSON. Check apiUrl.", {
+                    certUrl: certUrl,
+                    expected: "https://api-eu.ecoflow.com"
+                });
+                this.sendSocketNotification("STATUS_UPDATE", { status: "Endpoint mismatch: use https://api-eu.ecoflow.com" });
+                return;
+            }
+
+            if (responseData && responseData.code === "0" && responseData.data) {
+                this.connectMQTT(responseData.data);
             } else {
-                let msg = response.data ? response.data.message : "Unknown Error";
-                console.error("MMM-EcoFlow: API returned non-zero code", response.data);
+                let msg = responseData && responseData.message ? responseData.message : "Unknown Error";
+                console.error("MMM-EcoFlow: API returned non-zero code", responseData);
                 this.sendSocketNotification("STATUS_UPDATE", { status: `API Error: ${msg}` });
             }
         } catch (error) {
