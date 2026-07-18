@@ -261,6 +261,33 @@ module.exports = NodeHelper.create({
         }
     },
 
+    loadExistingDataHistory: function(targetPath) {
+        if (!fs.existsSync(targetPath)) {
+            return [];
+        }
+
+        try {
+            const raw = fs.readFileSync(targetPath, "utf8");
+            const parsed = JSON.parse(raw);
+
+            if (Array.isArray(parsed)) {
+                return parsed;
+            }
+
+            if (parsed && parsed.timestamp && parsed.data) {
+                return [parsed];
+            }
+
+            return [];
+        } catch (err) {
+            console.error("MMM-EcoFlow: Failed to read existing history file", {
+                targetPath: targetPath,
+                error: err
+            });
+            return [];
+        }
+    },
+
     // Garantiert atomarer Schreibprozess über POSIX renameSync
     writeAtomicJSON: function(data) {
         const targetPath = path.resolve(this.config.outputFile);
@@ -276,8 +303,11 @@ module.exports = NodeHelper.create({
                 fs.mkdirSync(dir, { recursive: true });
             }
 
+            const history = this.loadExistingDataHistory(targetPath);
+            history.push(data);
+
             // 1. In die .tmp Datei schreiben
-            fs.writeFileSync(tmpPath, JSON.stringify(data, null, 4), "utf8");
+            fs.writeFileSync(tmpPath, JSON.stringify(history, null, 4), "utf8");
             
             // 2. Atomares Ersetzen im OS-Dateisystem (Linux rename)
             fs.renameSync(tmpPath, targetPath);
@@ -288,7 +318,7 @@ module.exports = NodeHelper.create({
             this.sendSocketNotification("DATA_WRITTEN", {
                 timestamp: data.timestamp,
                 receivedAt: Date.now(),
-                entryCount: Object.keys(data.data || {}).length
+                entryCount: history.length
             });
         } catch (err) {
             console.error("MMM-EcoFlow: Atomic write failed", {
