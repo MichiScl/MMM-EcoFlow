@@ -118,6 +118,23 @@ module.exports = NodeHelper.create({
     },
 
     // Erstellt die MQTT-Verbindung mit den erhaltenen Zertifikaten
+    resolveTopics: function(authData) {
+        if (!Array.isArray(this.config.topics)) {
+            return [];
+        }
+
+        const certificateAccount = authData.certificateAccount || authData.username || "";
+        const serialNumber = this.config.deviceSerial || this.config.sn || "";
+
+        return this.config.topics.map((topic) => {
+            return topic
+                .replace(/\$\{certificateAccount\}/g, certificateAccount)
+                .replace(/\$\{sn\}/g, serialNumber)
+                .replace(/\$\{serial\}/g, serialNumber)
+                .replace(/\$\{deviceSerial\}/g, serialNumber);
+        });
+    },
+
     connectMQTT: function(authData) {
         const self = this;
         const brokerUrl = `mqtts://${authData.url}:${authData.port}`;
@@ -148,8 +165,9 @@ module.exports = NodeHelper.create({
             self.sendSocketNotification("STATUS_UPDATE", { status: "Connected to MQTT" });
             
             // Abonnieren der konfigurierten Topics
-            if (Array.isArray(self.config.topics)) {
-                self.config.topics.forEach(topic => {
+            const topics = self.resolveTopics(authData);
+            if (topics.length > 0) {
+                topics.forEach(topic => {
                     self.mqttClient.subscribe(topic, (err) => {
                         if (err) {
                             console.error("MMM-EcoFlow: MQTT subscribe failed for", topic, err);
