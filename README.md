@@ -1,41 +1,38 @@
 # MMM-EcoFlow
 
-MagicMirror² module that periodically connects to the EcoFlow Developer Open API (via the EcoFlow MQTT broker). The module subscribes to configured MQTT topics, filters incoming payloads according to your rules, and writes the filtered data atomically to a local JSON file so other modules can read it without blocking.
+MagicMirror² module that bridges the EcoFlow Developer API with the MagicMirror frontend by authenticating to EcoFlow, subscribing to MQTT topics, and storing filtered sensor/device data in a JSON file.
 
-**Key features:**
-- Authenticates against the EcoFlow Developer API to obtain MQTT credentials.
-- Subscribes to configurable MQTT topics.
-- Recursively filters nested JSON objects by a list of allowed keys.
-- Writes output atomically to a JSON file (`rename`-based) to avoid partial reads.
+What it does
+- Uses `accessKey` and `secretKey` to request MQTT broker credentials from the EcoFlow certification endpoint.
+- Connects to EcoFlow over MQTT and subscribes to the configured topics.
+- Parses each incoming MQTT message as JSON.
+- Recursively filters nested payloads so only the configured keys are kept.
+- Writes the filtered result to `outputFile` using a temporary file and an atomic rename, which avoids partial JSON writes.
+- Updates the frontend status with messages such as `Authenticating...`, `Connected to MQTT`, and `Connected & Writing`.
 
-**Note:** See the implementation in [MMM-EcoFlow/MMM-EcoFlow.js](MMM-EcoFlow/MMM-EcoFlow.js#L1-L120) and the MQTT/auth logic in [MMM-EcoFlow/node_helper.js](MMM-EcoFlow/node_helper.js#L1-L220).
-
-## Installation
-
+Installation
 1. Copy or clone this folder into your MagicMirror `modules` directory:
 
 ```bash
 cd ~/MagicMirror/modules
-git clone https://github.com/yourusername/MMM-EcoFlow.git
+git clone https://github.com/MichiScl/MMM-EcoFlow.git
 cd MMM-EcoFlow
 ```
 
-2. Install the Node dependencies used by the module:
+2. Install the Node dependencies:
 
 ```bash
 npm install
 ```
 
-3. Add the module configuration to your MagicMirror `config/config.js` (example below) and restart MagicMirror.
+3. Add the module configuration to `config/config.js` and restart MagicMirror.
 
-## Example Configuration
-
-Add a module block to your `config/config.js`:
+Example configuration
 
 ```js
 {
   module: "MMM-EcoFlow",
-  position: "top_right", // any valid MagicMirror position
+  position: "top_right",
   config: {
     accessKey: "YOUR_ACCESS_KEY",
     secretKey: "YOUR_SECRET_KEY",
@@ -50,45 +47,46 @@ Add a module block to your `config/config.js`:
 }
 ```
 
-## Configuration Parameters
+Configuration parameters
+- `accessKey`: API access key from the EcoFlow Developer portal. Required.
+- `secretKey`: matching secret key for the API access key. Required.
+- `topics`: list of MQTT topics to subscribe to. Required.
+- `dataFilter`: list of keys to retain. If empty, the full payload is kept. The filter is recursive.
+- `outputFile`: output JSON path. The path is resolved by the helper and folders are created automatically if needed.
+- `apiUrl`: EcoFlow API base endpoint. Default: `https://api-eu.ecoflow.com`
 
-- **`accessKey`**: string — API access key provided by EcoFlow developer portal. Default: `""`. Mandatory: yes — the module will not authenticate without it.
-- **`secretKey`**: string — API secret key corresponding to the `accessKey`. Default: `""`. Mandatory: yes.
-- **`topics`**: array — list of MQTT topics to subscribe to (e.g. `"/open/api/device/state/v1/DEVICE_SN"`). Default: `[]`. Mandatory: you should provide at least one topic to receive data.
-- **`dataFilter`**: array — list of keys to retain from incoming JSON payloads. The module searches nested objects recursively and collects any matching keys. Default: `[]` (empty = do not filter; the full payload will be kept).
-- **`outputFile`**: string — path to write the filtered JSON output. Default: `modules/MMM-EcoFlow/output.json`. The path is resolved relative to the MagicMirror root; ensure the process has write permissions to the containing folder.
-- **`apiUrl`**: string — EcoFlow API base URL / region endpoint. Default: `https://api-eu.ecoflow.com`. Change this only if you have credentials for another regional API endpoint.
+How the data flow works
+1. The frontend sends its config to the node helper on startup.
+2. The helper creates a signed request using the configured keys and calls the EcoFlow certification endpoint.
+3. EcoFlow returns MQTT connection information.
+4. The helper opens an MQTT connection, subscribes to the configured topics, and listens for incoming messages.
+5. Each payload is parsed, filtered, timestamped, and written atomically to the selected file.
+6. The frontend displays a status line and last-update timestamp based on socket notifications.
 
-## How it works
+Output format
 
-1. The module (frontend) sends the configuration to the node helper on startup.
-2. The node helper signs a request using `accessKey`/`secretKey` and calls the EcoFlow signing endpoint to obtain MQTT credentials.
-3. The helper connects to EcoFlow's MQTT broker, subscribes to the configured `topics` and listens for messages.
-4. Each incoming message is JSON-parsed, filtered via `dataFilter`, timestamped (converted to a readable format), and written atomically to the `outputFile`.
-5. The frontend receives socket notifications for status updates and the last successful write.
-
-## Output format
-
-The module writes a JSON object with this structure:
+The module writes a JSON object shaped like this:
 
 ```json
 {
   "timestamp": "DD.MM.YYYYTHH:MM:SS",
-  "data": { /* filtered key/value pairs */ }
+  "data": { }
 }
 ```
 
-## Troubleshooting
+Notes
+- The timestamp in the output is created from the incoming EcoFlow timestamp, or falls back to the current system time if the payload has no timestamp.
+- The helper supports nested payloads and keeps only the keys explicitly listed in `dataFilter`.
+- The temporary file is named `outputFile + ".tmp"`; after the JSON is written, the file is replaced using `renameSync`.
 
-- If the module shows `Authenticating...` for a long time or `Connection Failed`, verify `accessKey`, `secretKey`, and `apiUrl`.
-- If no messages arrive, check that your `topics` are correct (use the serial number and the topic path provided by EcoFlow documentation).
-- Ensure the MagicMirror process has write permission to the `outputFile` directory.
-- Check the MagicMirror logs and `node_helper.js` console output for errors. MQTT and HTTP errors are logged to the console.
+Troubleshooting
+- `Authenticating...` or `Connection Failed` typically points to bad credentials or an invalid `apiUrl`.
+- No MQTT data usually means the topic path or serial number is wrong.
+- If the output file cannot be written, verify the MagicMirror process has write permission to the target folder.
 
-## Dependencies
+Dependencies
+- `axios`
+- `mqtt`
 
-This module uses `axios` and `mqtt` as runtime dependencies. They are declared in `package.json` and installed by `npm install`.
-
-## License
-
+License
 MIT
