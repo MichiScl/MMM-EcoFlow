@@ -84,11 +84,13 @@ module.exports = NodeHelper.create({
             const responseData = response.data;
             const responseIsHtml = typeof responseData === "string" && responseData.trim().startsWith("<!doctype html");
 
-            console.log("MMM-EcoFlow: certification response", {
+            console.log("MMM-EcoFlow: certification response OK", {
                 status: response.status,
-                contentType: response.headers && response.headers["content-type"],
-                responseIsHtml: responseIsHtml,
-                data: responseData
+                code: responseData && responseData.code,
+                message: responseData && responseData.message,
+                mqttHost: responseData && responseData.data && responseData.data.url,
+                mqttPort: responseData && responseData.data && responseData.data.port,
+                protocol: responseData && responseData.data && responseData.data.protocol
             });
 
             if (responseIsHtml) {
@@ -162,17 +164,26 @@ module.exports = NodeHelper.create({
 
         this.mqttClient.on("connect", () => {
             console.log("MMM-EcoFlow: MQTT connection established");
-            self.sendSocketNotification("STATUS_UPDATE", { status: "Connected to MQTT" });
+            self.sendSocketNotification("STATUS_UPDATE", { status: "Connected to MQTT. Subscribing..." });
             
             // Abonnieren der konfigurierten Topics
             const topics = self.resolveTopics(authData);
             if (topics.length > 0) {
+                let subscribedCount = 0;
                 topics.forEach(topic => {
                     self.mqttClient.subscribe(topic, (err) => {
                         if (err) {
                             console.error("MMM-EcoFlow: MQTT subscribe failed for", topic, err);
                         } else {
+                            subscribedCount++;
                             console.log(`MMM-EcoFlow: Subscribed to ${topic}`);
+
+                            if (subscribedCount === topics.length) {
+                                console.log(`MMM-EcoFlow: All ${topics.length} topics subscribed. Waiting for live data.`);
+                                self.sendSocketNotification("STATUS_UPDATE", {
+                                    status: `Connected to MQTT (${topics.length} topics). Waiting for live data...`
+                                });
+                            }
                         }
                     });
                 });
@@ -232,8 +243,8 @@ module.exports = NodeHelper.create({
     // Verarbeitet die eingehenden MQTT-Pakete, filtert und schreibt sie atomar
     processMessage: function(topic, rawMessage) {
         try {
-            console.log("MMM-EcoFlow: Parsing MQTT payload for", topic);
             const parsed = JSON.parse(rawMessage);
+            const preview = JSON.stringify(parsed).slice(0, 160);
             
             // Filter anwenden
             let extractedData = this.filterObject(parsed, this.config.dataFilter);
@@ -243,7 +254,8 @@ module.exports = NodeHelper.create({
             let rawTime = parsed.timestamp || (parsed.data && parsed.data.timestamp) || null;
             const formattedTime = this.formatTimestamp(rawTime);
             
-            console.log("MMM-EcoFlow: Filtered payload keys", Object.keys(extractedData));
+            console.log(`MMM-EcoFlow: MQTT payload preview for ${topic}: ${preview}${preview.length >= 160 ? "..." : ""}`);
+            console.log(`MMM-EcoFlow: Filtered payload keys (${Object.keys(extractedData).length})`, Object.keys(extractedData));
             
             // Output-Objekt strukturieren
             const outputPayload = {
@@ -255,7 +267,6 @@ module.exports = NodeHelper.create({
         } catch (e) {
             console.error("MMM-EcoFlow: Error processing MQTT payload", {
                 topic: topic,
-                rawMessage: rawMessage,
                 error: e
             });
         }
