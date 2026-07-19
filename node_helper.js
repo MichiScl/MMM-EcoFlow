@@ -11,18 +11,31 @@ module.exports = NodeHelper.create({
         this.mqttClient = null;
         this.config = null;
         this.lastKnownValues = {};
+        this.flushIntervalMs = 60000;
+        this.pendingData = null;
+        this.pendingFlushTimeout = null;
     },
 
     socketNotificationReceived: function(notification, payload) {
         if (notification === "CONFIG") {
             this.config = payload;
+            this.flushIntervalMs = this.normalizeUpdateInterval(payload.updateInterval);
+            this.lastKnownValues = {};
+            this.pendingData = null;
+
+            if (this.pendingFlushTimeout) {
+                clearTimeout(this.pendingFlushTimeout);
+                this.pendingFlushTimeout = null;
+            }
+
             console.log("MMM-EcoFlow: CONFIG received", {
                 accessKey: payload.accessKey ? "present" : "missing",
                 secretKey: payload.secretKey ? "present" : "missing",
                 topics: Array.isArray(payload.topics) ? payload.topics : [],
                 dataFilter: Array.isArray(payload.dataFilter) ? payload.dataFilter : [],
                 outputFile: payload.outputFile,
-                apiUrl: payload.apiUrl
+                apiUrl: payload.apiUrl,
+                updateInterval: this.flushIntervalMs
             });
             this.initEcoFlowConnection();
         }
@@ -51,6 +64,41 @@ module.exports = NodeHelper.create({
         return apiUrl
             .replace(/^https?:\/\/developer-eu\.ecoflow\.com/i, "https://api.ecoflow.com")
             .replace(/^https?:\/\/api-eu\.ecoflow\.com/i, "https://api.ecoflow.com");
+    },
+
+    normalizeUpdateInterval: function(rawValue) {
+        const parsed = Number(rawValue);
+
+        if (!Number.isFinite(parsed)) {
+            return 60000;
+        }
+
+        if (parsed <= 0) {
+            return 0;
+        }
+
+        return Math.max(0, parsed);
+    },
+
+    scheduleBufferedWrite: function(data) {
+        if (this.flushIntervalMs === 0) {
+            this.writeAtomicJSON(data);
+            return;
+        }
+
+        this.pendingData = data;
+
+        if (this.pendingFlushTimeout) {
+            clearTimeout(this.pendingFlushTimeout);
+        }
+
+        this.pendingFlushTimeout = setTimeout(() => {
+            if (this.pendingData) {
+                this.writeAtomicJSON(this.pendingData);
+                this.pendingData = null;
+            }
+            this.pendingFlushTimeout = null;
+        }, this.flushIntervalMs);
     },
 
     // Holt die Broker-Verbindungsdaten von der EcoFlow API
@@ -296,7 +344,7 @@ module.exports = NodeHelper.create({
                 ...mergedData
             };
 
-            this.writeAtomicJSON(outputPayload);
+            this.scheduleBufferedWrite(outputPayload);
         } catch (e) {
             console.error("MMM-EcoFlow: Error processing MQTT payload", {
                 topic: topic,

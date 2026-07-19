@@ -2,6 +2,8 @@ Module.register("MMM-EcoFlow", {
     defaults: {
         accessKey: "",
         secretKey: "",
+        deviceSerial: "",
+        updateInterval: 60000,
         topics: [], // Array von Topics, z.B. ["/open/api/device/quota/v1/DEINE_SERIENNUMMER"]
         dataFilter: [], // Array von Keys, die behalten werden sollen (z.B. ["soc", "wIn", "wOut"])
         outputFile: "modules/MMM-EcoFlow/output.json",
