@@ -257,10 +257,10 @@ module.exports = NodeHelper.create({
             console.log(`MMM-EcoFlow: MQTT payload preview for ${topic}: ${preview}${preview.length >= 160 ? "..." : ""}`);
             console.log(`MMM-EcoFlow: Filtered payload keys (${Object.keys(extractedData).length})`, Object.keys(extractedData));
             
-            // Output-Objekt strukturieren
+            // Output-Objekt strukturieren - flat array record format for downstream charting
             const outputPayload = {
                 timestamp: formattedTime,
-                data: extractedData
+                ...extractedData
             };
 
             this.writeAtomicJSON(outputPayload);
@@ -270,6 +270,25 @@ module.exports = NodeHelper.create({
                 error: e
             });
         }
+    },
+
+    normalizeHistoryRecord: function(entry) {
+        if (!entry || typeof entry !== "object") {
+            return null;
+        }
+
+        if (entry.timestamp && entry.data && typeof entry.data === "object") {
+            return {
+                timestamp: entry.timestamp,
+                ...entry.data
+            };
+        }
+
+        if (entry.timestamp) {
+            return entry;
+        }
+
+        return null;
     },
 
     loadExistingDataHistory: function(targetPath) {
@@ -282,14 +301,13 @@ module.exports = NodeHelper.create({
             const parsed = JSON.parse(raw);
 
             if (Array.isArray(parsed)) {
-                return parsed;
+                return parsed
+                    .map((entry) => this.normalizeHistoryRecord(entry))
+                    .filter(Boolean);
             }
 
-            if (parsed && parsed.timestamp && parsed.data) {
-                return [parsed];
-            }
-
-            return [];
+            const normalized = this.normalizeHistoryRecord(parsed);
+            return normalized ? [normalized] : [];
         } catch (err) {
             console.error("MMM-EcoFlow: Failed to read existing history file", {
                 targetPath: targetPath,
