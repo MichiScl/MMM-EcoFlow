@@ -44,7 +44,7 @@ Example configuration
       "/open/${certificateAccount}/${sn}/status",
       "/open/${certificateAccount}/${sn}/quota"
     ],
-    dataFilter: ["soc", "wIn", "wOut"],
+    dataFilter: ["powGetPv", "powGetPv2", "gridConnectionPower"],
     outputFile: "modules/MMM-EcoFlow/output.json",
     apiUrl: "https://api.ecoflow.com",
     showModule: true
@@ -58,7 +58,7 @@ Configuration parameters
 - `secretKey`: matching secret key for the API access key. Required.
 - `topics`: list of MQTT topics to subscribe to. Required. The helper now supports the documented placeholder tokens `${certificateAccount}` and `${sn}` (or `${serial}`) and will expand them using the MQTT certificate reply and the configured serial number.
 - `deviceSerial` / `sn`: optional device serial number used to resolve topic placeholders such as `${sn}` in the topic list. See the device-serial section below.
-- `updateInterval`: write interval in milliseconds for buffered output. Default: `60000`. If set to `0`, each incoming MQTT record is written immediately as it arrives.
+- `updateInterval`: write interval of latest filtered data in milliseconds for buffered output. Default: `60000`. If set to `0`, each incoming MQTT record is written immediately as it arrives.
 - `dataFilter`: list of keys to retain. If empty, the full payload is kept. The filter is recursive.
 - `outputFile`: output JSON path. The path is resolved by the helper and folders are created automatically if needed.
 - `apiUrl`: EcoFlow API base endpoint. Default: `https://api.ecoflow.com`
@@ -79,13 +79,13 @@ The module writes a JSON array of flat records shaped like this:
 
 ```json
 [
-  {
-    "timestamp": "DD.MM.YYYY HH:MM:SS",
-    "topic": "/open/${certificateAccount}/${sn}/quota",
-    "powGetPv": 371.939,
-    "powGetPv2": 373.16,
-    "gridConnectionPower": 745.1
-  }
+    {
+        "timestamp": "19.07.2026 15:24:27",
+        "topic": "/open/open-ece085c907e0405a8227bab4b6e136ec/BK01Z11ACH4G3380/quota",
+        "powGetPv": 371.939,
+        "gridConnectionPower": 745.1,
+        "powGetPv2": 373.16
+    },
 ]
 ```
 
