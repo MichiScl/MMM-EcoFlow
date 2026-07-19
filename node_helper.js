@@ -260,6 +260,7 @@ module.exports = NodeHelper.create({
             // Output-Objekt strukturieren - flat array record format for downstream charting
             const outputPayload = {
                 timestamp: formattedTime,
+                topic: topic,
                 ...extractedData
             };
 
@@ -280,12 +281,16 @@ module.exports = NodeHelper.create({
         if (entry.timestamp && entry.data && typeof entry.data === "object") {
             return {
                 timestamp: entry.timestamp,
+                topic: entry.topic || null,
                 ...entry.data
             };
         }
 
         if (entry.timestamp) {
-            return entry;
+            return {
+                ...entry,
+                topic: entry.topic || null
+            };
         }
 
         return null;
