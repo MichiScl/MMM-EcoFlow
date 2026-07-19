@@ -203,9 +203,10 @@ module.exports = NodeHelper.create({
         });
     },
 
-    // Konvertiert Timestamps in das Format DD.MM.YYYYTHH:MM:SS
+    // Konvertiert Timestamps in das Format DD.MM.YYYY HH:MM:SS
     formatTimestamp: function(apiTimestamp) {
-        const date = apiTimestamp ? new Date(Number(apiTimestamp)) : new Date();
+        const timestampValue = Number(apiTimestamp);
+        const date = Number.isFinite(timestampValue) ? new Date(timestampValue) : new Date();
         const pad = (n) => String(n).padStart(2, '0');
         
         const day = pad(date.getDate());
@@ -215,7 +216,7 @@ module.exports = NodeHelper.create({
         const minutes = pad(date.getMinutes());
         const seconds = pad(date.getSeconds());
 
-        return `${day}.${month}.${year}T${hours}:${minutes}:${seconds}`;
+        return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
     },
 
     // Rekursive Filterfunktion für verschachtelte JSON-Objekte
@@ -248,6 +249,7 @@ module.exports = NodeHelper.create({
             
             // Filter anwenden
             let extractedData = this.filterObject(parsed, this.config.dataFilter);
+            const filteredKeys = Object.keys(extractedData);
             
             // Timestamp ermitteln und konvertieren
             // EcoFlow liefert oft 'timestamp' oder innerhalb von 'param' bzw. 'data'
@@ -255,7 +257,12 @@ module.exports = NodeHelper.create({
             const formattedTime = this.formatTimestamp(rawTime);
             
             console.log(`MMM-EcoFlow: MQTT payload preview for ${topic}: ${preview}${preview.length >= 160 ? "..." : ""}`);
-            console.log(`MMM-EcoFlow: Filtered payload keys (${Object.keys(extractedData).length})`, Object.keys(extractedData));
+            console.log(`MMM-EcoFlow: Filtered payload keys (${filteredKeys.length})`, filteredKeys);
+
+            if (filteredKeys.length === 0) {
+                console.log("MMM-EcoFlow: Skipping record with no matching filtered data keys.");
+                return;
+            }
             
             // Output-Objekt strukturieren - flat array record format for downstream charting
             const outputPayload = {
@@ -338,6 +345,14 @@ module.exports = NodeHelper.create({
             }
 
             const history = this.loadExistingDataHistory(targetPath);
+            const previousEntry = history[history.length - 1];
+            const isDuplicate = previousEntry && JSON.stringify(previousEntry) === JSON.stringify(data);
+
+            if (isDuplicate) {
+                console.log("MMM-EcoFlow: Skipping duplicate data record.");
+                return;
+            }
+
             history.push(data);
 
             // 1. In die .tmp Datei schreiben
