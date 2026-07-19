@@ -10,6 +10,7 @@ module.exports = NodeHelper.create({
         console.log("MMM-EcoFlow helper started...");
         this.mqttClient = null;
         this.config = null;
+        this.lastKnownValues = {};
     },
 
     socketNotificationReceived: function(notification, payload) {
@@ -204,9 +205,11 @@ module.exports = NodeHelper.create({
     },
 
     // Konvertiert Timestamps in das Format DD.MM.YYYY HH:MM:SS
+    // Für neue MQTT-Daten wird die lokale Systemzeit des Rechners verwendet.
     formatTimestamp: function(apiTimestamp) {
         const timestampValue = Number(apiTimestamp);
-        const date = Number.isFinite(timestampValue) ? new Date(timestampValue) : new Date();
+        const rawDate = Number.isFinite(timestampValue) ? new Date(timestampValue) : new Date();
+        const date = Number.isNaN(rawDate.getTime()) ? new Date() : rawDate;
         const pad = (n) => String(n).padStart(2, '0');
         
         const day = pad(date.getDate());
@@ -221,7 +224,7 @@ module.exports = NodeHelper.create({
 
     // Rekursive Filterfunktion für verschachtelte JSON-Objekte
     filterObject: function(obj, allowedKeys) {
-        if (allowedKeys.length === 0) return obj;
+        if (!Array.isArray(allowedKeys) || allowedKeys.length === 0) return obj;
         
         let filtered = {};
         
@@ -241,6 +244,27 @@ module.exports = NodeHelper.create({
         return filtered;
     },
 
+    mergeWithLastKnownValues: function(currentData) {
+        if (!this.config) {
+            return currentData;
+        }
+
+        const targetKeys = Array.isArray(this.config.dataFilter) && this.config.dataFilter.length > 0
+            ? this.config.dataFilter
+            : Object.keys(currentData);
+
+        const merged = { ...this.lastKnownValues };
+
+        targetKeys.forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(currentData, key)) {
+                merged[key] = currentData[key];
+            }
+        });
+
+        this.lastKnownValues = { ...merged };
+        return { ...merged };
+    },
+
     // Verarbeitet die eingehenden MQTT-Pakete, filtert und schreibt sie atomar
     processMessage: function(topic, rawMessage) {
         try {
@@ -251,10 +275,9 @@ module.exports = NodeHelper.create({
             let extractedData = this.filterObject(parsed, this.config.dataFilter);
             const filteredKeys = Object.keys(extractedData);
             
-            // Timestamp ermitteln und konvertieren
-            // EcoFlow liefert oft 'timestamp' oder innerhalb von 'param' bzw. 'data'
-            let rawTime = parsed.timestamp || (parsed.data && parsed.data.timestamp) || null;
-            const formattedTime = this.formatTimestamp(rawTime);
+            // Neue Datensätze werden mit der lokalen Systemzeit des Rechners
+            // versehen, sobald sie im MQTT-Stream ankommen.
+            const formattedTime = this.formatTimestamp(Date.now());
             
             console.log(`MMM-EcoFlow: MQTT payload preview for ${topic}: ${preview}${preview.length >= 160 ? "..." : ""}`);
             console.log(`MMM-EcoFlow: Filtered payload keys (${filteredKeys.length})`, filteredKeys);
@@ -263,12 +286,14 @@ module.exports = NodeHelper.create({
                 console.log("MMM-EcoFlow: Skipping record with no matching filtered data keys.");
                 return;
             }
+
+            const mergedData = this.mergeWithLastKnownValues(extractedData);
             
             // Output-Objekt strukturieren - flat array record format for downstream charting
             const outputPayload = {
                 timestamp: formattedTime,
                 topic: topic,
-                ...extractedData
+                ...mergedData
             };
 
             this.writeAtomicJSON(outputPayload);
@@ -351,6 +376,15 @@ module.exports = NodeHelper.create({
             if (isDuplicate) {
                 console.log("MMM-EcoFlow: Skipping duplicate data record.");
                 return;
+            }
+
+            const latestHistoryEntry = history[history.length - 1];
+            if (latestHistoryEntry && latestHistoryEntry.timestamp && this.config && Array.isArray(this.config.dataFilter) && this.config.dataFilter.length > 0) {
+                this.config.dataFilter.forEach((key) => {
+                    if (typeof latestHistoryEntry[key] !== "undefined" && typeof data[key] === "undefined") {
+                        data[key] = latestHistoryEntry[key];
+                    }
+                });
             }
 
             history.push(data);
