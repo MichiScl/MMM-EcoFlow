@@ -57,7 +57,7 @@ Configuration parameters
 - `accessKey`: API access key from the EcoFlow Developer portal. Required.
 - `secretKey`: matching secret key for the API access key. Required.
 - `topics`: list of MQTT topics to subscribe to. Required. The helper now supports the documented placeholder tokens `${certificateAccount}` and `${sn}` (or `${serial}`) and will expand them using the MQTT certificate reply and the configured serial number.
-- `deviceSerial` / `sn`: optional device serial number used to resolve topic placeholders such as `${sn}` in the topic list. See [Finding the device serial number](#finding-the-device-serial-number).
+- `deviceSerial` / `sn`: optional device serial number used to resolve topic placeholders such as `${sn}` in the topic list. See the device-serial section below.
 - `updateInterval`: write interval in milliseconds for buffered output. Default: `60000`. If set to `0`, each incoming MQTT record is written immediately as it arrives.
 - `dataFilter`: list of keys to retain. If empty, the full payload is kept. The filter is recursive.
 - `outputFile`: output JSON path. The path is resolved by the helper and folders are created automatically if needed.
