@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 const mqtt = require("mqtt");
+const { normalizeMaxHistoryEntries, trimHistoryToLimit } = require("../lib/history");
 
 module.exports = NodeHelper.create({
     start: function() {
@@ -34,6 +35,7 @@ module.exports = NodeHelper.create({
                 topics: Array.isArray(payload.topics) ? payload.topics : [],
                 dataFilter: Array.isArray(payload.dataFilter) ? payload.dataFilter : [],
                 outputFile: payload.outputFile,
+                maxHistoryEntries: payload.maxHistoryEntries,
                 apiUrl: payload.apiUrl,
                 updateInterval: this.flushIntervalMs
             });
@@ -434,6 +436,7 @@ module.exports = NodeHelper.create({
             }
 
             const history = this.loadExistingDataHistory(targetPath);
+            const maxHistoryEntries = normalizeMaxHistoryEntries(this.config && this.config.maxHistoryEntries);
             const previousEntry = history[history.length - 1];
             const isDuplicate = previousEntry && JSON.stringify(previousEntry) === JSON.stringify(data);
 
@@ -452,9 +455,10 @@ module.exports = NodeHelper.create({
             }
 
             history.push(data);
+            const boundedHistory = trimHistoryToLimit(history, maxHistoryEntries);
 
             // 1. In die .tmp Datei schreiben
-            fs.writeFileSync(tmpPath, JSON.stringify(history, null, 4), "utf8");
+            fs.writeFileSync(tmpPath, JSON.stringify(boundedHistory, null, 4), "utf8");
             
             // 2. Atomares Ersetzen im OS-Dateisystem (Linux rename)
             fs.renameSync(tmpPath, targetPath);
@@ -465,7 +469,7 @@ module.exports = NodeHelper.create({
             this.sendSocketNotification("DATA_WRITTEN", {
                 timestamp: data.timestamp,
                 receivedAt: Date.now(),
-                entryCount: history.length
+                entryCount: boundedHistory.length
             });
         } catch (err) {
             console.error("MMM-EcoFlow: Atomic write failed", {

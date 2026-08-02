@@ -46,6 +46,7 @@ Example configuration
     ],
     dataFilter: ["powGetPv", "powGetPv2", "gridConnectionPower"],
     outputFile: "modules/MMM-EcoFlow/output.json",
+    maxHistoryEntries: 10000,
     apiUrl: "https://api.ecoflow.com",
     showModule: true
   }
@@ -61,6 +62,7 @@ Configuration parameters
 - `updateInterval`: write interval of latest filtered data in milliseconds for buffered output. Default: `60000`. If set to `0`, each incoming MQTT record is written immediately as it arrives.
 - `dataFilter`: list of keys to retain. If empty, the full payload is kept. The filter is recursive.
 - `outputFile`: output JSON path. The path is resolved by the helper and folders are created automatically if needed.
+- `maxHistoryEntries`: maximum number of history records written to the JSON file. Default: `Infinity` (no limitation of history elements, so the full history is kept). Set to a number such as `10000` to keep the file size bounded by dropping the oldest entry when a new one arrives (ring buffer).
 - `apiUrl`: EcoFlow API base endpoint. Default: `https://api.ecoflow.com`
 - `showModule`: controls whether the module is rendered on the mirror. Default: `true`. Set to `false` to hide the module completely.
 
