@@ -86,16 +86,29 @@ module.exports = NodeHelper.create({
             return;
         }
 
+        // Buffer the latest data record and (re)start the flush timer
         this.pendingData = data;
+
+        console.log("MMM-EcoFlow: scheduleBufferedWrite() - data buffered. Will flush in ms:", this.flushIntervalMs, "payload-preview:", JSON.stringify(data).slice(0,160));
 
         if (this.pendingFlushTimeout) {
             clearTimeout(this.pendingFlushTimeout);
+            console.log("MMM-EcoFlow: scheduleBufferedWrite() - cleared existing flush timer");
         }
 
+        // Use a named reference so we can log when it fires
         this.pendingFlushTimeout = setTimeout(() => {
-            if (this.pendingData) {
-                this.writeAtomicJSON(this.pendingData);
-                this.pendingData = null;
+            try {
+                console.log("MMM-EcoFlow: Flush timer fired. pendingData present:", !!this.pendingData);
+                if (this.pendingData) {
+                    console.log("MMM-EcoFlow: Invoking writeAtomicJSON from flush timer. Preview:", JSON.stringify(this.pendingData).slice(0,160));
+                    this.writeAtomicJSON(this.pendingData);
+                    this.pendingData = null;
+                } else {
+                    console.log("MMM-EcoFlow: Flush timer fired but no pendingData to write.");
+                }
+            } catch (err) {
+                console.error("MMM-EcoFlow: Error during flush timer handler", err);
             }
             this.pendingFlushTimeout = null;
         }, this.flushIntervalMs);
@@ -336,7 +349,10 @@ module.exports = NodeHelper.create({
             }
 
             const mergedData = this.mergeWithLastKnownValues(extractedData);
-            
+
+            console.log("MMM-EcoFlow: Merged data (after carry-forward):", JSON.stringify(mergedData).slice(0,160));
+            console.log("MMM-EcoFlow: Using timestamp:", formattedTime);
+
             // Output-Objekt strukturieren - flat array record format for downstream charting
             const outputPayload = {
                 timestamp: formattedTime,
