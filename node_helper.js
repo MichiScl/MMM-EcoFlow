@@ -4,7 +4,6 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 const mqtt = require("mqtt");
-const { normalizeMaxHistoryEntries, trimHistoryToLimit } = require("../lib/history");
 
 module.exports = NodeHelper.create({
     start: function() {
@@ -420,6 +419,37 @@ module.exports = NodeHelper.create({
         }
     },
 
+    normalizeMaxHistoryEntries: function(value) {
+        if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+            return Math.floor(value);
+        }
+
+        if (typeof value === 'string') {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed) && parsed > 0) {
+                return Math.floor(parsed);
+            }
+        }
+
+        return Infinity;
+    },
+
+    trimHistoryToLimit: function(history, maxEntries) {
+        if (!Array.isArray(history)) {
+            return [];
+        }
+
+        if (!Number.isFinite(maxEntries) || maxEntries <= 0) {
+            return history;
+        }
+
+        if (history.length <= maxEntries) {
+            return history;
+        }
+
+        return history.slice(history.length - maxEntries);
+    },
+
     // Garantiert atomarer Schreibprozess über POSIX renameSync
     writeAtomicJSON: function(data) {
         const targetPath = path.resolve(this.config.outputFile);
@@ -436,7 +466,7 @@ module.exports = NodeHelper.create({
             }
 
             const history = this.loadExistingDataHistory(targetPath);
-            const maxHistoryEntries = normalizeMaxHistoryEntries(this.config && this.config.maxHistoryEntries);
+            const maxHistoryEntries = this.normalizeMaxHistoryEntries(this.config && this.config.maxHistoryEntries);
             const previousEntry = history[history.length - 1];
             const isDuplicate = previousEntry && JSON.stringify(previousEntry) === JSON.stringify(data);
 
@@ -455,7 +485,7 @@ module.exports = NodeHelper.create({
             }
 
             history.push(data);
-            const boundedHistory = trimHistoryToLimit(history, maxHistoryEntries);
+            const boundedHistory = this.trimHistoryToLimit(history, maxHistoryEntries);
 
             // 1. In die .tmp Datei schreiben
             fs.writeFileSync(tmpPath, JSON.stringify(boundedHistory, null, 4), "utf8");
