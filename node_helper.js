@@ -87,14 +87,13 @@ module.exports = NodeHelper.create({
             return;
         }
 
-        // Buffer the latest data record and (re)start the flush timer
+        // Buffer the latest data record
         this.pendingData = data;
-
         console.log("MMM-EcoFlow: scheduleBufferedWrite() - data buffered. Will flush in ms:", this.flushIntervalMs, "payload-preview:", JSON.stringify(data).slice(0,160));
 
         if (this.pendingFlushTimeout) {
-            clearTimeout(this.pendingFlushTimeout);
-            console.log("MMM-EcoFlow: scheduleBufferedWrite() - cleared existing flush timer");
+            console.log("MMM-EcoFlow: scheduleBufferedWrite() - flush timer already pending, keeping existing timer");
+            return;
         }
 
         // Use a named reference so we can log when it fires
