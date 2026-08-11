@@ -81,13 +81,13 @@ The module writes a JSON array of flat records shaped like this:
 
 ```json
 [
-    {
-        "timestamp": "19.07.2026 15:24:27",
-        "topic": "/open/open-ece085c907e0405a8227bab4b6e136ec/BK01Z11ACH4G3380/quota",
-        "powGetPv": 371.939,
-        "gridConnectionPower": 745.1,
-        "powGetPv2": 373.16
-    },
+  {
+    "timestamp": "19.07.2026 15:24:27",
+    "topic": "/open/open-ece085c907e0405a8227bab4b6e136ec/BK01Z11ACH4G3380/quota",
+    "powGetPv": 371.939,
+    "gridConnectionPower": 745.1,
+    "powGetPv2": 373.16
+  }
 ]
 ```
 
