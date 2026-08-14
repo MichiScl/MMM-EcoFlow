@@ -65,7 +65,7 @@ Configuration parameters
 - `maxHistoryEntries`: maximum number of history records written to the JSON file. Default: `Infinity` (no limitation of history elements, so the full history is kept). Set to a number such as `10000` to keep the file size bounded by dropping the oldest entry when a new one arrives (ring buffer).
 - `apiUrl`: EcoFlow API base endpoint. Default: `https://api.ecoflow.com`
 - `showModule`: controls whether the module is rendered on the mirror. Default: `true`. Set to `false` to hide the module completely.
-- `calcDailyEnergy`: Optional boolean. Default: `false`. When `true` the helper will calculate the cumulative energy produced today (in kWh) using the configured `gridConnectionPower` values and the time delta between records. The daily total resets at the start of a new calendar day and the calculated value is written to the output record as the single additional field `energyToday` (kWh, rounded to 3 decimals). Internal helper values used for the calculation are not written to `outputFile`.
+- `calcEnergyToday`: Optional boolean. Default: `true`. When `true` the helper will calculate the cumulative energy produced today (in kWh) using the configured `gridConnectionPower` values and the time delta between records. The daily total resets at the start of a new calendar day and the calculated value is written to the output record as the single additional field `energyToday` (kWh, rounded to 3 decimals). Internal helper values used for the calculation are not written to `outputFile`. Set to `false` to inhibit writing `energyToday` into the output file.
 
 How the data flow works
 

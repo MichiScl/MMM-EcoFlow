@@ -49,7 +49,7 @@ module.exports = NodeHelper.create({
       // Recover energy state from existing history file (if enabled)
       try {
         const targetPath = path.resolve(this.config.outputFile);
-        if (this.config && this.config.calcDailyEnergy) {
+        if (this.config && this.config.calcEnergyToday) {
           this.recoverEnergyStateFromHistory(targetPath);
         }
       } catch (e) {
@@ -656,7 +656,7 @@ module.exports = NodeHelper.create({
 
       // If configured, compute daily energy (kWh) using gridConnectionPower and delta time
       let recordToWrite = { ...data };
-      if (this.config && this.config.calcDailyEnergy) {
+      if (this.config && this.config.calcEnergyToday) {
         try {
           const currMs = this.parseFormattedTimestampMs(data.timestamp) || Date.now();
 
