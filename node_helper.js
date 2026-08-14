@@ -14,6 +14,11 @@ module.exports = NodeHelper.create({
     this.flushIntervalMs = 60000;
     this.pendingData = null;
     this.pendingFlushTimeout = null;
+    // State for daily energy calculation
+    this.energyState = {
+      currentDay: null, // YYYY-MM-DD
+      totalKWh: 0,
+    };
   },
 
   socketNotificationReceived: function (notification, payload) {
@@ -41,6 +46,15 @@ module.exports = NodeHelper.create({
         updateInterval: this.flushIntervalMs,
       });
       this.initEcoFlowConnection();
+      // Recover energy state from existing history file (if enabled)
+      try {
+        const targetPath = path.resolve(this.config.outputFile);
+        if (this.config && this.config.calcDailyEnergy) {
+          this.recoverEnergyStateFromHistory(targetPath);
+        }
+      } catch (e) {
+        console.error("MMM-EcoFlow: Failed to recover energy state", e);
+      }
     }
   },
 
@@ -336,6 +350,87 @@ module.exports = NodeHelper.create({
     return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
   },
 
+  // Parse timestamp in format DD.MM.YYYY HH:MM:SS to ms since epoch
+  parseFormattedTimestampMs: function (formatted) {
+    if (!formatted || typeof formatted !== "string") return null;
+    // Expect DD.MM.YYYY HH:MM:SS
+    const parts = formatted.split(" ");
+    if (parts.length < 2) return null;
+    const dateParts = parts[0].split(".");
+    const timeParts = parts[1].split(":");
+    if (dateParts.length !== 3 || timeParts.length !== 3) return null;
+    const day = Number(dateParts[0]);
+    const month = Number(dateParts[1]) - 1;
+    const year = Number(dateParts[2]);
+    const hours = Number(timeParts[0]);
+    const minutes = Number(timeParts[1]);
+    const seconds = Number(timeParts[2]);
+    const dt = new Date(year, month, day, hours, minutes, seconds);
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt.getTime();
+  },
+
+  // Compute energy contribution between two records (kWh)
+  computeEnergyBetween: function (prev, curr) {
+    try {
+      const prevMs = prev.timestampMs || this.parseFormattedTimestampMs(prev.timestamp);
+      const currMs = curr.timestampMs || this.parseFormattedTimestampMs(curr.timestamp);
+      if (!prevMs || !currMs || currMs <= prevMs) return 0;
+      const deltaHours = (currMs - prevMs) / 3600000;
+
+      const prevPower = Number(prev.gridConnectionPower || 0);
+      const currPower = Number(curr.gridConnectionPower || prevPower || 0);
+
+      // Use trapezoidal rule (average power) for better accuracy
+      const avgPower = (prevPower + currPower) / 2;
+      const energyKWh = (avgPower * deltaHours) / 1000.0;
+      return energyKWh > 0 ? energyKWh : 0;
+    } catch (e) {
+      return 0;
+    }
+  },
+
+  // Recover energy state from existing history file so daily total continues
+  recoverEnergyStateFromHistory: function (targetPath) {
+    const today = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const todayKey = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+
+    const history = this.loadExistingDataHistory(targetPath);
+    if (!Array.isArray(history) || history.length === 0) {
+      this.energyState.currentDay = todayKey;
+      this.energyState.totalKWh = 0;
+      return;
+    }
+
+    // Ensure entries are sorted ascending by timestamp
+    const entries = history
+      .map((e) => {
+        const ms = e.timestampMs || this.parseFormattedTimestampMs(e.timestamp);
+        return { entry: e, ms: ms || 0 };
+      })
+      .sort((a, b) => a.ms - b.ms)
+      .map((x) => x.entry);
+
+    // Sum energy only for intervals that fall into today's date
+    let total = 0;
+    for (let i = 1; i < entries.length; i++) {
+      const prev = entries[i - 1];
+      const curr = entries[i];
+      const currMs = curr.timestampMs || this.parseFormattedTimestampMs(curr.timestamp);
+      const dt = new Date(currMs);
+      const pad2 = (n) => String(n).padStart(2, "0");
+      const key = `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+      if (key === todayKey) {
+        total += this.computeEnergyBetween(prev, curr);
+      }
+    }
+
+    this.energyState.currentDay = todayKey;
+    this.energyState.totalKWh = Number(total.toFixed(6));
+    console.log("MMM-EcoFlow: Recovered daily energy (kWh)", this.energyState.totalKWh);
+  },
+
   // Rekursive Filterfunktion für verschachtelte JSON-Objekte
   filterObject: function (obj, allowedKeys) {
     if (!Array.isArray(allowedKeys) || allowedKeys.length === 0) return obj;
@@ -559,7 +654,52 @@ module.exports = NodeHelper.create({
         });
       }
 
-      history.push(data);
+      // If configured, compute daily energy (kWh) using gridConnectionPower and delta time
+      let recordToWrite = { ...data };
+      if (this.config && this.config.calcDailyEnergy) {
+        try {
+          const currMs = this.parseFormattedTimestampMs(data.timestamp) || Date.now();
+
+          const pad = (n) => String(n).padStart(2, "0");
+          const dt = new Date(currMs);
+          const dayKey = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+
+          if (this.energyState.currentDay !== dayKey) {
+            // New day -> reset
+            this.energyState.currentDay = dayKey;
+            this.energyState.totalKWh = 0;
+          }
+
+          let energyAdded = 0;
+          if (latestHistoryEntry) {
+            energyAdded = this.computeEnergyBetween(latestHistoryEntry, data);
+          }
+
+          if (energyAdded > 0) {
+            this.energyState.totalKWh = Number((this.energyState.totalKWh + energyAdded).toFixed(6));
+          }
+
+          // Only expose a single field `energyToday` in the written record.
+          // Keep other internal fields (timestampMs, energyInterval_kWh) out of the output.
+          // Prepare the record that will be stored in history and written to file.
+          recordToWrite = { ...data };
+          delete recordToWrite.timestampMs;
+          delete recordToWrite.energyInterval_kWh;
+          recordToWrite.energyToday = Number(this.energyState.totalKWh.toFixed(3));
+        } catch (e) {
+          console.error("MMM-EcoFlow: Error computing daily energy", e);
+          recordToWrite = { ...data };
+          delete recordToWrite.timestampMs;
+          delete recordToWrite.energyInterval_kWh;
+        }
+      } else {
+        // If not calculating energy, ensure internal fields are not written
+        recordToWrite = { ...data };
+        delete recordToWrite.timestampMs;
+        delete recordToWrite.energyInterval_kWh;
+      }
+
+      history.push(recordToWrite);
       const boundedHistory = this.trimHistoryToLimit(
         history,
         maxHistoryEntries,

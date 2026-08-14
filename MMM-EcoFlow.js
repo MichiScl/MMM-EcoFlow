@@ -7,6 +7,9 @@ Module.register("MMM-EcoFlow", {
     topics: [], // Array von Topics, z.B. ["/open/api/device/quota/v1/DEINE_SERIENNUMMER"]
     dataFilter: [], // Array von Keys, die behalten werden sollen (z.B. ["soc", "wIn", "wOut"])
     outputFile: "modules/MMM-EcoFlow/output.json",
+    // When true, calculate daily produced energy (kWh) from gridConnectionPower
+    // and add `energyToday_kWh` to each written record.
+    calcDailyEnergy: false,
     maxHistoryEntries: Infinity,
     apiUrl: "https://api.ecoflow.com", // Documented EcoFlow API host
     showModule: true,
